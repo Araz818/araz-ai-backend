@@ -4,9 +4,10 @@ FastAPI backend for ARAZ AI Android application.
 
 ## Deployment
 
-- Platform: Render
-- Build Command: pip install -r requirements.txt
-- Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
+- Platform: Render Web Service (Python)
+- Root Directory: leave blank (repository root)
+- Build Command: `pip install -r backend/requirements.txt`
+- Start Command: `uvicorn backend.app:app --host 0.0.0.0 --port $PORT`
 
 ## Environment Variables
 
