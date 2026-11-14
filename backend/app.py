@@ -4,7 +4,7 @@ import time
 from collections import defaultdict, deque
 from typing import Literal
 
-import httpx2 as httpx
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
