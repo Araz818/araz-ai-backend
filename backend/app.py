@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 import time
 from collections import defaultdict, deque
@@ -8,6 +9,8 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("araz.backend")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ARAZ_ACCESS_TOKEN = os.getenv("ARAZ_ACCESS_TOKEN", "")
@@ -160,10 +163,30 @@ async def chat(
         )
 
     if response.status_code >= 400:
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini sorğunu qəbul etmədi. Serverdəki model və Gemini açarını yoxlayın."
+        provider_status = None
+        try:
+            error = response.json().get("error", {})
+            if isinstance(error, dict):
+                provider_status = error.get("status")
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+        logger.error(
+            "Gemini request rejected: http_status=%s provider_status=%s",
+            response.status_code,
+            provider_status,
         )
+
+        if response.status_code in (401, 403):
+            detail = "Gemini API açarı yanlışdır və ya lazımi icazəsi yoxdur."
+        elif response.status_code == 400:
+            detail = "Gemini model adı və ya sorğu formatı qəbul edilmədi."
+        elif response.status_code == 404:
+            detail = "Gemini modeli tapılmadı. Model adını yoxlayın."
+        else:
+            detail = f"Gemini sorğunu qəbul etmədi (HTTP {response.status_code})."
+
+        raise HTTPException(status_code=502, detail=detail)
 
     try:
         result = response.json()
