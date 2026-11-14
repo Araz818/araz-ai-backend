@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import logging
 import os
@@ -131,18 +132,22 @@ async def chat(
         },
         "contents": contents,
         "generationConfig": {
-            "temperature": 0.65,
             "maxOutputTokens": 1200
         },
     }
 
     try:
-        async with httpx.AsyncClient(timeout=40) as client:
-            response = await client.post(
-                GEMINI_URL,
-                headers={"x-goog-api-key": GEMINI_API_KEY},
-                json=payload,
-            )
+        async with httpx.AsyncClient(timeout=60) as client:
+            for attempt in range(2):
+                response = await client.post(
+                    GEMINI_URL,
+                    headers={"x-goog-api-key": GEMINI_API_KEY},
+                    json=payload,
+                )
+                if response.status_code != 503 or attempt == 1:
+                    break
+                logger.warning("Gemini is temporarily unavailable; retrying once")
+                await asyncio.sleep(1)
 
     except httpx.TimeoutException as exc:
         raise HTTPException(
@@ -183,6 +188,8 @@ async def chat(
             detail = "Gemini model adı və ya sorğu formatı qəbul edilmədi."
         elif response.status_code == 404:
             detail = "Gemini modeli tapılmadı. Model adını yoxlayın."
+        elif response.status_code == 503:
+            detail = "Gemini xidməti hazırda yüklənib. Bir az sonra yenidən cəhd edin."
         else:
             detail = f"Gemini sorğunu qəbul etmədi (HTTP {response.status_code})."
 
