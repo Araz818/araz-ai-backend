@@ -14,7 +14,7 @@ logger = logging.getLogger("araz.backend")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ARAZ_ACCESS_TOKEN = os.getenv("ARAZ_ACCESS_TOKEN", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 app = FastAPI(title="ARAZ AI Gemini API", version="1.2.0")
