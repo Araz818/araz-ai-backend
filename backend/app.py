@@ -1,4 +1,3 @@
-
 import hmac
 import os
 import time
@@ -89,6 +88,11 @@ def enforce_rate_limit(request: Request) -> None:
         )
 
     window.append(now)
+
+
+@app.get("/")
+async def root() -> dict[str, bool]:
+    return {"ok": True}
 
 
 @app.get("/health")
