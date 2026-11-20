@@ -14,11 +14,17 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("araz.backend")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+AI_PROVIDER = os.getenv("ARAZ_AI_PROVIDER", "gemini").strip().lower()
+PROVIDER_KEYS = {"gemini": GEMINI_API_KEY, "openai": OPENAI_API_KEY}
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+
 ARAZ_ACCESS_TOKEN = os.getenv("ARAZ_ACCESS_TOKEN", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-app = FastAPI(title="ARAZ AI Gemini API", version="1.2.0")
+app = FastAPI(title="ARAZ AI API", version="1.2.0")
 
 allowed_origins = [
     origin.strip()
@@ -40,9 +46,10 @@ MAX_HISTORY_MESSAGES = 24
 
 SYSTEM_INSTRUCTION = (
     "Sən ARAZ AI adlı şəxsi köməkçisən. Sakit, peşəkar, mehriban və məntiqli danış. "
-    "Həmişə Azərbaycan dilində cavab ver; istifadəçi başqa dildə yazsa belə, cavabını Azərbaycan "
-    "dilində saxla. İstifadəçi tərcümə istəsə, tələb olunan tərcüməni ver, amma izahını Azərbaycan "
-    "dilində yaz. Əvvəlki mesajların kontekstini nəzərə al. Bilmədiyin məlumatı uydurma; "
+    "İstifadəçi cavab dilini açıq göstəribsə, o dildə cavab ver. Əks halda son istifadəçi "
+    "mesajı türkcədirsə türkcə, azərbaycancadırsa azərbaycanca cavab ver. Dil aydın deyilsə, "
+    "Azərbaycan dilindən istifadə et. Tərcümə istənəndə göstərilən hədəf dilə tərcümə et. "
+    "Əvvəlki mesajların kontekstini nəzərə al. Bilmədiyin məlumatı uydurma; "
     "internetə çıxışın olmadığını və ya qeyri-müəyyənliyi açıq bildir. Təhlükəli və ya maliyyə "
     "əməliyyatlarını istifadəçinin açıq təsdiqi olmadan icra etdiyini iddia etmə."
 )
@@ -65,10 +72,10 @@ class ChatResponse(BaseModel):
 
 
 def authorize(authorization: str | None) -> None:
-    if not GEMINI_API_KEY or not ARAZ_ACCESS_TOKEN:
+    if not PROVIDER_KEYS.get(AI_PROVIDER) or not ARAZ_ACCESS_TOKEN:
         raise HTTPException(
             status_code=503,
-            detail="Backend GEMINI_API_KEY və ARAZ_ACCESS_TOKEN ilə konfiqurasiya edilməyib.",
+            detail="Backend üçün model xidməti və ya giriş tokeni konfiqurasiya edilməyib.",
         )
 
     supplied_token = authorization.removeprefix("Bearer ") if authorization else ""
@@ -103,8 +110,48 @@ async def root() -> dict[str, bool]:
 async def health() -> dict[str, bool]:
     return {
         "ok": True,
-        "configured": bool(GEMINI_API_KEY and ARAZ_ACCESS_TOKEN)
+        "configured": bool(PROVIDER_KEYS.get(AI_PROVIDER) and ARAZ_ACCESS_TOKEN)
     }
+
+
+async def chat_with_openai(messages: list[ChatMessage]) -> ChatResponse:
+    payload = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {"role": "developer", "content": SYSTEM_INSTRUCTION},
+            *[message.model_dump() for message in messages],
+        ],
+        "max_completion_tokens": 1200,
+        "store": False,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                OPENAI_URL,
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                json=payload,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="OpenAI cavabı gecikir.") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="OpenAI xidmətinə qoşulmaq alınmadı.") from exc
+
+    if response.status_code == 429:
+        raise HTTPException(status_code=429, detail="OpenAI sorğu və ya kvota limiti keçildi.")
+    if response.status_code >= 400:
+        logger.error("OpenAI request rejected: http_status=%s", response.status_code)
+        raise HTTPException(status_code=502, detail="OpenAI sorğunu qəbul etmədi.")
+
+    try:
+        reply = response.json()["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="OpenAI cavab formatı tanınmadı.") from exc
+
+    if not isinstance(reply, str) or not reply.strip():
+        raise HTTPException(status_code=502, detail="OpenAI mətn cavabı qaytarmadı.")
+
+    return ChatResponse(reply=reply.strip())
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -117,6 +164,9 @@ async def chat(
 
     authorize(authorization)
     enforce_rate_limit(request)
+
+    if AI_PROVIDER == "openai":
+        return await chat_with_openai(body.messages)
 
     contents = [
         {

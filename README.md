@@ -11,9 +11,17 @@ FastAPI backend for ARAZ AI Android application.
 
 ## Environment Variables
 
-- GEMINI_API_KEY
-- ARAZ_ACCESS_TOKEN
-- GEMINI_MODEL (optional)
+- `ARAZ_ACCESS_TOKEN` authenticates requests from the Android app.
+- `ARAZ_AI_PROVIDER` selects `gemini` (default) or `openai`.
+- Gemini uses `GEMINI_API_KEY` and optionally `GEMINI_MODEL`.
+- OpenAI uses `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (default: `gpt-4.1-mini`).
+
+To switch to GPT, set `ARAZ_AI_PROVIDER=openai` and add `OPENAI_API_KEY` in the Render service's Environment settings, then deploy. The app can keep using the same URL and access token.
+
+Once deployed, check `GET /health` for `configured: true`, then send these messages in separate chats:
+
+- Azerbaijani: “Sabah üçün qısa alış-veriş siyahısı yaz.” Expect an Azerbaijani shopping list.
+- Turkish: “Yarın için kısa bir alışveriş listesi yaz.” Expect a Turkish shopping list.
 
 ## API
 
